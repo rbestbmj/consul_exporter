@@ -46,10 +46,20 @@ var (
 		"How many members are in the cluster.",
 		nil, nil,
 	)
+	nodeMetaData = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "", "node_meta_data"),
+		"Tags of a service.",
+		[]string{"node", "key", "value"}, nil,
+	)
 	serviceCount = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "catalog_services"),
 		"How many services are in the cluster.",
 		nil, nil,
+	)
+	serviceTags = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "", "service_tags"),
+		"Tags of a service.",
+		[]string{"service_id", "node", "tag"}, nil,
 	)
 	serviceNodesHealthy = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "", "catalog_service_node_healthy"),
@@ -149,6 +159,8 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- nodeChecks
 	ch <- serviceChecks
 	ch <- keyValues
+	ch <- nodeMetaData
+	ch <- serviceTags
 }
 
 // Collect fetches the stats from configured Consul location and delivers them
@@ -194,6 +206,14 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(
 			nodeCount, prometheus.GaugeValue, float64(len(nodes)),
 		)
+	}
+
+	for _, node := range nodes {
+		for k, v := range node.Meta {
+			ch <- prometheus.MustNewConstMetric(
+				nodeMetaData, prometheus.GaugeValue, 1, node.Node, k, v,
+			)
+		}
 	}
 
 	// Query for the full list of services.
@@ -286,6 +306,12 @@ func (e *Exporter) collectHealthSummary(ch chan<- prometheus.Metric, serviceName
 			ch <- prometheus.MustNewConstMetric(
 				serviceNodesHealthy, prometheus.GaugeValue, passing, entry.Service.ID, entry.Node.Node, entry.Service.Service,
 			)
+
+			for _, tag := range entry.Service.Tags {
+				ch <- prometheus.MustNewConstMetric(
+					serviceTags, prometheus.GaugeValue, 1, entry.Service.ID, entry.Node.Node, tag,
+				)
+			}
 		}
 	}
 }
